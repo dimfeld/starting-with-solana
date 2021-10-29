@@ -1,0 +1,12 @@
+[programs.localnet]
+p0001 = "AWRV5Lh6E83jQ4UytWhFuRwUzZNV4VvnyQJrGGSFTRhK"
+
+[registry]
+url = "https://anchor.projectserum.com"
+
+[provider]
+cluster = "localnet"
+wallet = "/home/dimfeld/.config/solana/id.json"
+
+[scripts]
+test = "mocha -t 1000000 tests/"
