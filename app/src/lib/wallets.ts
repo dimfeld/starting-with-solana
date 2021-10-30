@@ -1,3 +1,5 @@
+/* This is a reworked version of the official in-development Solana Svelte wallet store
+ * at https://github.com/solana-labs/wallet-adapter/tree/master/packages/core/svelte */
 import {
   MessageSignerWalletAdapter,
   MessageSignerWalletAdapterProps,
