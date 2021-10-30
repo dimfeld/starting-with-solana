@@ -1,11 +1,24 @@
-<script>
-	import * as web3 from '@solana/web3.js';
-	import { getPhantomWallet } from '@solana/wallet-adapter-wallets';
+<script lang="ts">
+  import * as web3 from '@solana/web3.js';
+  import { getPhantomWallet } from '@solana/wallet-adapter-wallets';
+  import {
+    createWalletStore,
+    WalletConnectionState,
+    walletConnectionStateLabels,
+  } from '$lib/wallets';
 
-	const wallets = [getPhantomWallet()];
+  const walletList = [getPhantomWallet()];
+  const wallet = createWalletStore({
+    wallets: walletList,
+    autoconnect: true,
+  });
+
+  $wallet.select(getPhantomWallet().name);
 </script>
 
-<h1>Welcome to SvelteKit</h1>
-<p>
-	Visit <a href="https://kit.svelte.dev">kit.svelte.dev</a> to read the documentation
-</p>
+{#if $wallet.wallet && $wallet.state === WalletConnectionState.notready}
+  <p>Initializing Wallet...</p>
+  <a href={$wallet.wallet.url} target="_blank">Reconfigure Wallet</a>
+{:else}
+  <h1>Wallet State: {walletConnectionStateLabels[$wallet.state]}</h1>
+{/if}

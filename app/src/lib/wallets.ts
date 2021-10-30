@@ -36,6 +36,13 @@ export enum WalletConnectionState {
   connected,
 }
 
+export const walletConnectionStateLabels = {
+  [WalletConnectionState.notready]: 'Initializing',
+  [WalletConnectionState.ready]: 'Disconnected',
+  [WalletConnectionState.connecting]: 'Connecting',
+  [WalletConnectionState.connected]: 'Connected',
+};
+
 interface WalletStore {
   wallet: Wallet | null;
   publicKey: PublicKey | null;
