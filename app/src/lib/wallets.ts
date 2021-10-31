@@ -114,24 +114,15 @@ export function createWalletStore(options: WalletStoreOptions) {
   });
 
   function onConnect() {
-    walletStore.update((w) => ({
-      ...w,
-      state: WalletConnectionState.connected,
-    }));
+    setConnectionState(WalletConnectionState.connected);
   }
 
   function onDisconnect() {
-    walletStore.update((w) => ({
-      ...w,
-      state: WalletConnectionState.ready,
-    }));
+    setConnectionState(WalletConnectionState.ready);
   }
 
   function onReady() {
-    walletStore.update((w) => ({
-      ...w,
-      state: WalletConnectionState.ready,
-    }));
+    setConnectionState(WalletConnectionState.ready);
   }
 
   function setConnectionState(state: WalletConnectionState) {
@@ -196,6 +187,14 @@ export function createWalletStore(options: WalletStoreOptions) {
           }
           return currentAdapter.signMessage(message);
         };
+      }
+
+      if (currentAdapter.connected) {
+        setConnectionState(WalletConnectionState.ready);
+      } else if (currentAdapter.connecting) {
+        setConnectionState(WalletConnectionState.connecting);
+      } else if (currentAdapter.ready) {
+        setConnectionState(WalletConnectionState.ready);
       }
     }
 
