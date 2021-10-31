@@ -45,7 +45,7 @@ export const walletConnectionStateLabels = {
   [WalletConnectionState.connected]: 'Connected',
 };
 
-interface WalletStore {
+export interface WalletStore {
   wallet: Wallet | null;
   publicKey: PublicKey | null;
   state: WalletConnectionState;
