@@ -12,7 +12,7 @@ import {
   WalletNotFoundError,
   WalletNotReadyError,
 } from '@solana/wallet-adapter-base';
-import { Wallet, WalletName } from '@solana/wallet-adapter-wallets';
+import type { Wallet, WalletName } from '@solana/wallet-adapter-wallets';
 import {
   Connection,
   PublicKey,
@@ -25,7 +25,7 @@ import { Writable, writable } from 'svelte/store';
 type Adapter = ReturnType<Wallet['adapter']>;
 
 export interface WalletStoreOptions {
-  wallets: Wallet[];
+  wallets?: Wallet[];
   localStorageKey?: string;
   autoconnect?: boolean;
   onError?: (e: Error) => unknown;
@@ -51,6 +51,7 @@ interface WalletStore {
   state: WalletConnectionState;
 
   select(walletName: WalletName): void;
+  setWallets(wallets: Wallet[]): void;
 
   connect(): Promise<void>;
 
@@ -91,9 +92,7 @@ function wrappedWritableStore<T>(initial: T): [() => T, Writable<T>] {
 }
 
 export function createWalletStore(options: WalletStoreOptions) {
-  let wallets = Object.fromEntries(
-    options.wallets.map((wallet) => [wallet.name, wallet])
-  );
+  let wallets: Record<string, Wallet> = {};
 
   let localStorageKey = options.localStorageKey ?? 'walletAdapter';
   let currentAdapter: Adapter | null = null;
@@ -105,6 +104,7 @@ export function createWalletStore(options: WalletStoreOptions) {
     publicKey: null,
     state: WalletConnectionState.notready,
     select,
+    setWallets,
     connect,
     disconnect,
     sendTransaction,
@@ -208,6 +208,35 @@ export function createWalletStore(options: WalletStoreOptions) {
     }));
   }
 
+  async function setWallets(newWallets: Wallet[]) {
+    wallets = Object.fromEntries(
+      newWallets.map((wallet) => [wallet.name, wallet])
+    );
+
+    let selected = currentWallet().wallet;
+    if (selected && !wallets[selected.name]) {
+      return select(null);
+    } else {
+      return maybeLoadLocalStorage();
+    }
+  }
+
+  let performedLocalStorageLoad = false;
+  function maybeLoadLocalStorage() {
+    if (
+      !performedLocalStorageLoad &&
+      typeof window !== 'undefined' &&
+      Object.values(wallets).length > 1 &&
+      !currentWallet().wallet
+    ) {
+      performedLocalStorageLoad = true;
+      let savedWalletName = window.localStorage[localStorageKey];
+      if (savedWalletName && wallets[savedWalletName]) {
+        return select(savedWalletName);
+      }
+    }
+  }
+
   async function select(walletName: string | null) {
     if (walletName && !wallets[walletName]) {
       throw new WalletNotFoundError(walletName);
@@ -296,12 +325,11 @@ export function createWalletStore(options: WalletStoreOptions) {
     select(null);
   });
 
-  if (typeof window !== 'undefined') {
-    let savedWalletName = window.localStorage[localStorageKey];
-    if (savedWalletName) {
-      select(savedWalletName);
-    }
+  if (options.wallets) {
+    setWallets(options.wallets);
   }
+
+  maybeLoadLocalStorage();
 
   return walletStore;
 }

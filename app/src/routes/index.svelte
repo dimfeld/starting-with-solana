@@ -1,19 +1,29 @@
 <script lang="ts">
-  import * as web3 from '@solana/web3.js';
-  import { getPhantomWallet } from '@solana/wallet-adapter-wallets';
+  import { Program, Provider, web3 } from '@project-serum/anchor';
   import {
     createWalletStore,
     WalletConnectionState,
     walletConnectionStateLabels,
   } from '$lib/wallets';
+  import { Connection } from '@solana/web3.js';
+  import { onMount } from 'svelte';
 
-  const walletList = [getPhantomWallet()];
   const wallet = createWalletStore({
-    wallets: walletList,
     autoconnect: true,
   });
 
-  $wallet.select(getPhantomWallet().name);
+  onMount(async () => {
+    const wallets = await import('@solana/wallet-adapter-wallets');
+    const walletList = [wallets.getPhantomWallet()];
+    $wallet.setWallets(walletList);
+    $wallet.select(getPhantomWallet().name);
+  });
+
+  const commitmentLevel = 'processed';
+
+  const network = 'http://127.0.0.1:8899';
+  const connection = new Connection(network, commitmentLevel);
+  $: provider = new Provider(connection, $wallet, {});
 </script>
 
 {#if $wallet.wallet && $wallet.state === WalletConnectionState.notready}
