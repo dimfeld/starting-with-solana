@@ -1,3 +1,8 @@
+<script context="module">
+  import { Buffer } from 'buffer'; // @ledger assumes this is available but it's only native to Node
+  globalThis.Buffer = Buffer;
+</script>
+
 <script lang="ts">
   import { Program, Provider, web3 } from '@project-serum/anchor';
   import {
@@ -15,8 +20,9 @@
   onMount(async () => {
     const wallets = await import('@solana/wallet-adapter-wallets');
     const walletList = [wallets.getPhantomWallet()];
+    console.dir(walletList);
     $wallet.setWallets(walletList);
-    $wallet.select(getPhantomWallet().name);
+    $wallet.select(walletList[0].name);
   });
 
   const commitmentLevel = 'processed';
@@ -27,8 +33,10 @@
 </script>
 
 {#if $wallet.wallet && $wallet.state === WalletConnectionState.notready}
-  <p>Initializing Wallet...</p>
+  <p>Initializing Wallet {$wallet.wallet.name}...</p>
   <a href={$wallet.wallet.url} target="_blank">Reconfigure Wallet</a>
+{:else if !$wallet.wallet}
+  <p>Select a wallet</p>
 {:else}
   <h1>Wallet State: {walletConnectionStateLabels[$wallet.state]}</h1>
 {/if}

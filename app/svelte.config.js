@@ -13,7 +13,9 @@ const config = {
   kit: {
     vite: () => ({
       define: {
-        'global.TextDecoder': 'TextDecoder',
+        // Overrides for written code that assumes Node.js
+        'global.TextDecoder': 'TextDecoder', // borsh
+        'process.version': '"1000"', // pump which is imported by @torus
       },
       ssr: {},
       optimizeDeps: {
