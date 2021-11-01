@@ -11,7 +11,7 @@
     walletConnectionStateLabels,
   } from '$lib/wallets';
   import { setSolanaContext } from '$lib/context';
-  import { Commitment, Connection } from '@solana/web3.js';
+  import { Commitment, Connection, Keypair, PublicKey } from '@solana/web3.js';
   import { onMount, setContext } from 'svelte';
   import WalletList from '../lib/WalletList.svelte';
   import WalletGrid from '../lib/WalletGrid.svelte';
@@ -58,8 +58,7 @@
       </div>
     </header>
     <main class="pt-2">
-      <div class="max-w-lg" />
-      {#if $wallet.wallet}
+      {#if $wallet.state === WalletConnectionState.connected}
         <slot />
       {:else}
         <WalletGrid />

@@ -48,6 +48,7 @@
 <style>
   ul {
     display: flex;
+    background-color: white;
     flex-direction: column;
     width: 11rem;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
