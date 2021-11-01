@@ -5,10 +5,19 @@
     walletConnectionStateLabels,
   } from '$lib/wallets';
   import { getSolanaContext } from '$lib/context';
+  import idl from '$lib/idl/p0001.json';
+  import { PublicKey } from '@solana/web3.js';
 
-  const { wallet, connection } = getSolanaContext();
+  const { wallet, connection, commitmentLevel } = getSolanaContext();
 
-  $: provider = new Provider(connection, $wallet, {});
+  const programID = new PublicKey(idl.metadata.address);
+  $: provider = new Provider(connection, $wallet, {
+    preflightCommitment: commitmentLevel,
+  });
+
+  async function createCounter() {
+    const program = new Program(idl, programID, provider);
+  }
 </script>
 
 {#if !$wallet.wallet}

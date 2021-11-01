@@ -11,19 +11,19 @@
     walletConnectionStateLabels,
   } from '$lib/wallets';
   import { setSolanaContext } from '$lib/context';
-  import { Connection } from '@solana/web3.js';
+  import { Commitment, Connection } from '@solana/web3.js';
   import { onMount, setContext } from 'svelte';
 
   const wallet = createWalletStore({
     autoconnect: true,
   });
 
-  const commitmentLevel = 'processed';
+  const commitmentLevel : Commitment = 'processed';
 
   const network = 'http://127.0.0.1:8899';
   const connection = new Connection(network, commitmentLevel);
 
-  setSolanaContext({ wallet, connection });
+  setSolanaContext({ wallet, connection, commitmentLevel });
 
   onMount(async () => {
     const wallets = await import('@solana/wallet-adapter-wallets');
