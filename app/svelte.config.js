@@ -15,7 +15,7 @@ const config = {
       define: {
         // Overrides for written code that assumes Node.js
         'global.TextDecoder': 'TextDecoder', // borsh
-        'process.version': '"1000"', // pump which is imported by @torus
+        'process.version': '"1000"', // @torus imports pump which checks for Node 0.x
       },
       ssr: {},
       optimizeDeps: {
