@@ -47,6 +47,7 @@ export const walletConnectionStateLabels = {
 
 export interface WalletStore {
   wallet: Wallet | null;
+  allWallets: Record<string, Wallet>;
   publicKey: PublicKey | null;
   state: WalletConnectionState;
 
@@ -101,6 +102,7 @@ export function createWalletStore(options: WalletStoreOptions) {
 
   let [currentWallet, walletStore] = wrappedWritableStore<WalletStore>({
     wallet: null,
+    allWallets: wallets,
     publicKey: null,
     state: WalletConnectionState.notready,
     select,
@@ -211,6 +213,11 @@ export function createWalletStore(options: WalletStoreOptions) {
     wallets = Object.fromEntries(
       newWallets.map((wallet) => [wallet.name, wallet])
     );
+
+    walletStore.update((w) => ({
+      ...w,
+      allWallets: wallets,
+    }));
 
     let selected = currentWallet().wallet;
     if (selected && !wallets[selected.name]) {
