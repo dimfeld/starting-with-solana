@@ -54,6 +54,7 @@
       await program.rpc.add(line, {
         accounts: {
           baseAccount: baseAccountPubkey,
+          user: provider.wallet.publicKey,
         },
       });
 
