@@ -5,7 +5,7 @@
     walletConnectionStateLabels,
   } from '$lib/wallets';
   import { getSolanaContext } from '$lib/context';
-  import idl from '$lib/idl/p0001.json';
+  import idl from '$lib/idl/todo.json';
   import { Keypair, PublicKey, SystemProgram } from '@solana/web3.js';
   import { getContext, onMount } from 'svelte';
 
@@ -23,7 +23,7 @@
   let baseAccountPubkey: PublicKey | null = null;
 
   onMount(() => {
-    let savedBaseAccount = localStorage.getItem('p0001BaseAccount');
+    let savedBaseAccount = localStorage.getItem('todoBaseAccount');
     if (savedBaseAccount) {
       baseAccountPubkey = new PublicKey(savedBaseAccount);
     }
@@ -32,7 +32,7 @@
   async function initialize(firstLine: string) {
     let baseAccount = Keypair.generate();
     baseAccountPubkey = baseAccount.publicKey;
-    localStorage.setItem('p0001BaseAccount', baseAccountPubkey.toBase58());
+    localStorage.setItem('todoBaseAccount', baseAccountPubkey.toBase58());
 
     try {
       await program.rpc.initialize(firstLine, {

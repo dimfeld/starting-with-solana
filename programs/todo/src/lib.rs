@@ -7,7 +7,7 @@ const NAME_SIZE: usize = 60;
 const LIST_CAPACITY: usize = 32;
 
 #[program]
-pub mod p0001 {
+pub mod todo {
     use anchor_lang::solana_program::{program::invoke, system_instruction::transfer};
 
     use super::*;
