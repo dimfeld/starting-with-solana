@@ -35,8 +35,8 @@ pub mod todo {
         list.lines.push(*item.to_account_info().key);
         item.name = name;
 
-        // Move the bounty on to the account.
-
+        // Move the bounty to the account. We account for the rent amount that the account init
+        // already transferred into the account.
         let account_lamports = **item.to_account_info().lamports.borrow();
         if bounty < account_lamports {
             return Err(TodoListError::BountyTooSmall.into());
@@ -48,7 +48,7 @@ pub mod todo {
                 &transfer(
                     user.to_account_info().key,
                     item.to_account_info().key,
-                    bounty,
+                    transfer_amount,
                 ),
                 &[
                     user.to_account_info(),
@@ -62,8 +62,18 @@ pub mod todo {
     }
 
     pub fn cancel(ctx: Context<Cancel>) -> ProgramResult {
-        let item = &mut ctx.accounts.item;
         let list = &mut ctx.accounts.list;
+        let item = &mut ctx.accounts.item;
+
+        let user = ctx.accounts.user.to_account_info().key;
+
+        if &list.list_owner != user && &item.creator != user {
+            return Err(TodoListError::CancelPermissions.into());
+        }
+
+        if !list.lines.contains(item.to_account_info().key) {
+            return Err(TodoListError::ItemNotFound.into());
+        }
 
         // Return the tokens to the item creator
         item.close(item.to_account_info())?;
@@ -79,12 +89,16 @@ pub mod todo {
         let list = &mut ctx.accounts.list;
         let user = ctx.accounts.user.to_account_info().key;
 
-        if &item.creator == user {
-            item.creator_finished = true;
+        if !list.lines.contains(item.to_account_info().key) {
+            return Err(TodoListError::ItemNotFound.into());
         }
 
-        if &list.list_owner == user {
+        if &item.creator == user {
+            item.creator_finished = true;
+        } else if &list.list_owner == user {
             item.list_owner_finished = true;
+        } else {
+            return Err(TodoListError::FinishPermissions.into());
         }
 
         if item.creator_finished && item.list_owner_finished {
@@ -104,6 +118,12 @@ pub enum TodoListError {
     NameTooLong,
     #[msg("Bounty must be enough to pay rent")]
     BountyTooSmall,
+    #[msg("Only the list owner or item creator may cancel an item")]
+    CancelPermissions,
+    #[msg("Only the list owner or item creator may finish an item")]
+    FinishPermissions,
+    #[msg("Item does not belong to this todo list")]
+    ItemNotFound,
 }
 
 #[derive(Accounts)]
@@ -129,9 +149,8 @@ pub struct Add<'info> {
 pub struct Cancel<'info> {
     #[account(mut)]
     pub list: Account<'info, TodoList>,
-    #[account(has_one=creator)]
     pub item: Account<'info, ListItem>,
-    pub creator: Signer<'info>,
+    pub user: Signer<'info>,
 }
 
 #[derive(Accounts)]
