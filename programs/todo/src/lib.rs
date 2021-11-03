@@ -32,6 +32,10 @@ pub mod todo {
         let list = &mut ctx.accounts.list;
         let item = &mut ctx.accounts.item;
 
+        if list.lines.len() >= LIST_CAPACITY {
+            return Err(TodoListError::ListFull.into());
+        }
+
         list.lines.push(*item.to_account_info().key);
         item.name = name;
 
@@ -114,9 +118,11 @@ pub mod todo {
 
 #[error]
 pub enum TodoListError {
+    #[msg("This list is full")]
+    ListFull,
     #[msg("Name must be 60 bytes or less")]
     NameTooLong,
-    #[msg("Bounty must be enough to pay rent")]
+    #[msg("Bounty must be enough to mark account rent-exempt")]
     BountyTooSmall,
     #[msg("Only the list owner or item creator may cancel an item")]
     CancelPermissions,
