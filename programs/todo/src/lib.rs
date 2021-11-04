@@ -69,6 +69,7 @@ pub mod todo {
     pub fn cancel(ctx: Context<Cancel>) -> ProgramResult {
         let list = &mut ctx.accounts.list;
         let item = &mut ctx.accounts.item;
+        let item_creator = &ctx.accounts.item_creator;
 
         let user = ctx.accounts.user.to_account_info().key;
 
@@ -76,12 +77,16 @@ pub mod todo {
             return Err(TodoListError::CancelPermissions.into());
         }
 
+        if &item.creator != item_creator.to_account_info().key {
+            return Err(TodoListError::WrongItemCreator.into());
+        }
+
         if !list.lines.contains(item.to_account_info().key) {
             return Err(TodoListError::ItemNotFound.into());
         }
 
         // Return the tokens to the item creator
-        item.close(item.to_account_info())?;
+        item.close(item_creator.to_account_info())?;
 
         let item_key = ctx.accounts.item.to_account_info().key;
         list.lines.retain(|key| key != item_key);
@@ -131,6 +136,8 @@ pub enum TodoListError {
     FinishPermissions,
     #[msg("Item does not belong to this todo list")]
     ItemNotFound,
+    #[msg("Specified item creator does not match the pubkey in the item")]
+    WrongItemCreator,
 }
 
 #[derive(Accounts)]
@@ -156,7 +163,10 @@ pub struct Add<'info> {
 pub struct Cancel<'info> {
     #[account(mut)]
     pub list: Account<'info, TodoList>,
+    #[account(mut)]
     pub item: Account<'info, ListItem>,
+    #[account(mut)]
+    pub item_creator: UncheckedAccount<'info>,
     pub user: Signer<'info>,
 }
 
