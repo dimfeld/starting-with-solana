@@ -38,6 +38,7 @@ pub mod todo {
 
         list.lines.push(*item.to_account_info().key);
         item.name = name;
+        item.creator = *user.to_account_info().key;
 
         // Move the bounty to the account. We account for the rent amount that the account init
         // already transferred into the account.
