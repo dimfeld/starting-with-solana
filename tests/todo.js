@@ -11,8 +11,8 @@ describe('todo', () => {
   anchor.setProvider(provider);
   const mainProgram = anchor.workspace.Todo;
 
-  function expectBalance(actual, expected, message, slack=10000) {
-    expect(actual, message).within(expected - slack, expected)
+  function expectBalance(actual, expected, message, slack=20000) {
+    expect(actual, message).within(expected - slack, expected + slack)
   }
 
   async function createUser(airdropBalance) {
@@ -31,9 +31,18 @@ describe('todo', () => {
     };
   }
 
+  function createUsers(numUsers) {
+    let promises = [];
+    for(let i = 0; i < numUsers; i++) {
+      promises.push(createUser());
+    }
+
+    return Promise.all(promises);
+  }
+
   async function getAccountBalance(pubkey) {
     let account = await provider.connection.getAccountInfo(pubkey);
-    return account.lamports;
+    return account?.lamports ?? 0;
   }
 
   function programForUser(user) {
@@ -107,18 +116,22 @@ describe('todo', () => {
     }
   }
 
-  async function finishItem({ list, item, user }) {
+  async function finishItem({ list, listOwner, item, user, expectAccountClosed }) {
     let program = programForUser(user);
-    await program.rpc.cancel({
+    await program.rpc.finish({
       accounts: {
         list: list.publicKey,
         item: item.publicKey,
         user: user.key.publicKey,
+        listOwner: listOwner.key.publicKey,
       }
     });
 
-    let listData = await program.account.todoList.fetch(list.publicKey);
-    let itemData = await program.account.listItem.fetch(item.publicKey);
+    let [listData, itemData] = await Promise.all([
+      program.account.todoList.fetch(list.publicKey),
+      expectAccountClosed ? null : await program.account.listItem.fetch(item.publicKey),
+    ]);
+
     return {
       list: {
         publicKey: list.publicKey,
@@ -154,8 +167,7 @@ describe('todo', () => {
 
   describe('add', () => {
     it('Anyone can add an item to a list', async () => {
-      const owner = await createUser();
-      const adder = await createUser();
+      const [owner, adder] = await createUsers(2);
 
       const adderStartingBalance = await getAccountBalance(adder.key.publicKey);
       const list = await createList(owner, 'list');
@@ -255,8 +267,7 @@ describe('todo', () => {
 
   describe('cancel', () => {
     it('List owner can cancel an item', async () => {
-      const owner = await createUser();
-      const adder = await createUser();
+      const [owner, adder] = await createUsers(2);
 
       const list = await createList(owner, 'list');
 
@@ -287,11 +298,9 @@ describe('todo', () => {
     });
 
     it('Item creator can cancel an item', async () => {
-      const owner = await createUser();
-      const adder = await createUser();
+      const [owner, adder] = await createUsers(2);
 
       const list = await createList(owner, 'list');
-
       const adderStartingBalance = await getAccountBalance(adder.key.publicKey);
 
       const result = await addItem({
@@ -319,9 +328,7 @@ describe('todo', () => {
     });
 
     it('Other users can not cancel an item', async () => {
-      const owner = await createUser();
-      const adder = await createUser();
-      const otherUser = await createUser();
+      const [owner, adder, otherUser] = await createUsers(3);
 
       const list = await createList(owner, 'list');
 
@@ -361,16 +368,279 @@ describe('todo', () => {
       expect(itemBalance, 'Item balance is unchanged after failed cancel').equals(LAMPORTS_PER_SOL);
     });
 
-    it('item_creator key must match the key in the item account');
+    it('item_creator key must match the key in the item account', async () => {
+      const [owner, adder] = await createUsers(2);
+      const list = await createList(owner, 'list');
 
-    it('Can not cancel an item that is not in the given list');
+      const result = await addItem({
+        list,
+        user: adder,
+        bounty: LAMPORTS_PER_SOL,
+        name: 'An item',
+      });
+
+      try {
+        await cancelItem({
+          list,
+          item: result.item,
+          itemCreator: owner, // Wrong creator
+          user: owner,
+        });
+        expect.fail(`Listing the wrong item creator should fail`);
+      } catch(e) {
+        expect(e.toString(), 'Error message').equals('Specified item creator does not match the pubkey in the item');
+      }
+    });
+
+    it('Can not cancel an item that is not in the given list', async () => {
+      const [owner, adder] = await createUsers(2);
+      const [list1, list2] = await Promise.all([
+        createList(owner, 'list1'),
+        createList(owner, 'list2'),
+      ]);
+
+      const result = await addItem({
+        list: list1,
+        user: adder,
+        bounty: LAMPORTS_PER_SOL,
+        name: 'An item',
+      });
+
+      try {
+        await cancelItem({
+          list: list2, // Wrong list
+          item: result.item,
+          itemCreator: adder,
+          user: owner,
+        });
+        expect.fail(`Cancelling from the wrong list should fail`);
+      } catch(e) {
+        expect(e.toString(), 'Error message').equals('Item does not belong to this todo list');
+      }
+    });
   });
 
   describe('finish', () => {
-    it('List owner can call finish on an item');
-    it('Item creator can call finish on an item');
-    it('Bounty is sent to the list owner once both parties call finish');
-    it('Other users can not call finish');
-    it('Can not call finish on an item that is not in the given list');
+    it('List owner then item creator', async () => {
+      const [owner, adder] = await createUsers(2);
+
+      const list = await createList(owner, 'list');
+      const ownerInitial = await getAccountBalance(owner.key.publicKey);
+
+      const bounty = 5 * LAMPORTS_PER_SOL;
+      const { item } = await addItem({
+        list,
+        user: adder,
+        bounty,
+        name: 'An item',
+      });
+
+      expect(await getAccountBalance(item.publicKey), 'initialized account has bounty').equals(bounty);
+
+      const firstResult = await finishItem({
+        list,
+        item,
+        user: owner,
+        listOwner: owner,
+      });
+
+      expect(firstResult.list.data.lines, 'Item still in list after first finish').deep.equals([item.publicKey]);
+      expect(firstResult.item.data.creatorFinished, 'Creator finish is false after owner calls finish').equals(false);
+      expect(firstResult.item.data.listOwnerFinished, 'Owner finish flag gets set after owner calls finish').equals(true);
+      expect(await getAccountBalance(firstResult.item.publicKey), 'Bounty remains on item after one finish call').equals(bounty);
+
+      const finishResult = await finishItem({
+        list,
+        item,
+        user: adder,
+        listOwner: owner,
+        expectAccountClosed: true,
+      });
+
+      expect(finishResult.list.data.lines, 'Item removed from list after both finish').deep.equals([]);
+      expect(await getAccountBalance(finishResult.item.publicKey), 'Bounty remains on item after one finish call').equals(0);
+      expectBalance(await getAccountBalance(owner.key.publicKey), ownerInitial + bounty, 'Bounty transferred to owner');
+    });
+
+
+    it('Item creator then list owner', async () => {
+      const [owner, adder] = await createUsers(2);
+
+      const list = await createList(owner, 'list');
+      const ownerInitial = await getAccountBalance(owner.key.publicKey);
+
+      const bounty = 5 * LAMPORTS_PER_SOL;
+      const { item } = await addItem({
+        list,
+        user: adder,
+        bounty,
+        name: 'An item',
+      });
+
+      expect(await getAccountBalance(item.publicKey), 'initialized account has bounty').equals(bounty);
+
+      const firstResult = await finishItem({
+        list,
+        item,
+        user: adder,
+        listOwner: owner,
+      });
+
+      expect(firstResult.list.data.lines, 'Item still in list after first finish').deep.equals([item.publicKey]);
+      expect(firstResult.item.data.creatorFinished, 'Creator finish is true after creator calls finish').equals(true);
+      expect(firstResult.item.data.listOwnerFinished, 'Owner finish flag is false after creator calls finish').equals(false);
+      expect(await getAccountBalance(firstResult.item.publicKey), 'Bounty remains on item after one finish call').equals(bounty);
+
+      const finishResult = await finishItem({
+        list,
+        item,
+        user: owner,
+        listOwner: owner,
+        expectAccountClosed: true,
+      });
+
+      expect(finishResult.list.data.lines, 'Item removed from list after both finish').deep.equals([]);
+      expect(await getAccountBalance(finishResult.item.publicKey), 'Bounty remains on item after one finish call').equals(0);
+      expectBalance(await getAccountBalance(owner.key.publicKey), ownerInitial + bounty, 'Bounty transferred to owner');
+    });
+
+    it('Other users can not call finish', async () => {
+      const [owner, adder, otherUser] = await createUsers(3);
+
+      const list = await createList(owner, 'list');
+
+      const bounty = 5 * LAMPORTS_PER_SOL;
+      const { item } = await addItem({
+        list,
+        user: adder,
+        bounty,
+        name: 'An item',
+      });
+
+      try {
+        await finishItem({
+          list,
+          item,
+          user: otherUser,
+          listOwner: owner,
+        });
+        expect.fail('Finish by other user should have failed');
+      } catch(e) {
+        expect(e.toString(), 'error message').equals('Only the list owner or item creator may finish an item');
+      }
+
+      expect(await getAccountBalance(item.publicKey), 'Item balance did not change').equal(bounty);
+    });
+
+    it('Can not call finish on an item that is not in the given list', async () => {
+      const [owner, adder, otherUser] = await createUsers(3);
+
+      const [list1, list2] = await Promise.all([
+        createList(owner, 'list1'),
+        createList(owner, 'list2'),
+      ]);
+
+      const bounty = 5 * LAMPORTS_PER_SOL;
+      const { item } = await addItem({
+        list: list1,
+        user: adder,
+        bounty,
+        name: 'An item',
+      });
+
+      try {
+        await finishItem({
+          list: list2,
+          item,
+          user: otherUser,
+          listOwner: owner,
+        });
+        expect.fail('Finish by other user should have failed');
+      } catch(e) {
+        expect(e.toString(), 'error message').equals('Item does not belong to this todo list');
+      }
+
+      expect(await getAccountBalance(item.publicKey), 'Item balance did not change').equal(bounty);
+    });
+
+    it('Can not call finish with the wrong list owner', async () => {
+      const [owner, adder] = await createUsers(2);
+
+      const list  = await createList(owner, 'list1');
+
+      const bounty = 5 * LAMPORTS_PER_SOL;
+      const { item } = await addItem({
+        list,
+        user: adder,
+        bounty,
+        name: 'An item',
+      });
+
+      try {
+        await finishItem({
+          list,
+          item,
+          user: owner,
+          listOwner: adder,
+        });
+
+        expect.fail('Finish by other user should have failed');
+      } catch(e) {
+        expect(e.toString(), 'error message').equals('Specified list owner does not match the pubkey in the list');
+      }
+
+      expect(await getAccountBalance(item.publicKey), 'Item balance did not change').equal(bounty);
+    });
+
+    it('Can not call finish on an already-finished item', async () => {
+      const [owner, adder] = await createUsers(2);
+
+      const list = await createList(owner, 'list');
+      const ownerInitial = await getAccountBalance(owner.key.publicKey);
+
+      const bounty = 5 * LAMPORTS_PER_SOL;
+      const { item } = await addItem({
+        list,
+        user: adder,
+        bounty,
+        name: 'An item',
+      });
+
+      expect(await getAccountBalance(item.publicKey), 'initialized account has bounty').equals(bounty);
+
+      await Promise.all([
+        finishItem({
+          list,
+          item,
+          user: owner,
+          listOwner: owner,
+          expectAccountClosed: true,
+        }),
+
+        finishItem({
+          list,
+          item,
+          user: adder,
+          listOwner: owner,
+          expectAccountClosed: true,
+        })
+      ]);
+
+      try {
+        await finishItem({
+          list,
+          item,
+          user: owner,
+          listOwner: owner,
+          expectAccountClosed: true,
+        });
+
+        expect.fail('Finish on an already-closed item should fail');
+      } catch(e) {
+        expect(e.toString(), 'error message').equal('The given account is not owned by the executing program')
+      }
+
+      expectBalance(await getAccountBalance(owner.key.publicKey), ownerInitial + bounty, 'Bounty transferred to owner just once');
+    });
   });
 });

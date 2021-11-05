@@ -112,10 +112,9 @@ pub mod todo {
         }
 
         if item.creator_finished && item.list_owner_finished {
-            item.close(ctx.accounts.list_owner.to_account_info())?;
-
             let item_key = item.to_account_info().key;
             list.lines.retain(|key| key != item_key);
+            item.close(ctx.accounts.list_owner.to_account_info())?;
         }
 
         Ok(())
@@ -136,6 +135,8 @@ pub enum TodoListError {
     FinishPermissions,
     #[msg("Item does not belong to this todo list")]
     ItemNotFound,
+    #[msg("Specified list owner does not match the pubkey in the list")]
+    WrongListOwner,
     #[msg("Specified item creator does not match the pubkey in the item")]
     WrongItemCreator,
 }
@@ -172,12 +173,13 @@ pub struct Cancel<'info> {
 
 #[derive(Accounts)]
 pub struct Finish<'info> {
-    #[account(mut, has_one=list_owner)]
+    #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner)]
     pub list: Account<'info, TodoList>,
     #[account(mut)]
     pub item: Account<'info, ListItem>,
-    pub user: Signer<'info>,
+    #[account(mut)]
     pub list_owner: UncheckedAccount<'info>,
+    pub user: Signer<'info>,
 }
 
 #[account]
