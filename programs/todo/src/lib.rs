@@ -148,8 +148,15 @@ fn name_seed(name: &str) -> &[u8] {
 #[derive(Accounts)]
 #[instruction(name: String, capacity: u16, list_bump: u8)]
 pub struct NewList<'info> {
-    // 8 bytes discriminator, 4 + name.len for name, 32 * capacity for pubkeys
-    #[account(init, payer=user, space=TodoList::space(&name, capacity), seeds=[b"todolist", user.to_account_info().key.as_ref(), name_seed(&name)], bump=list_bump)]
+    #[account(init,
+        payer=user,
+        space=TodoList::space(&name, capacity),
+        seeds=[
+            b"todolist",
+            user.to_account_info().key.as_ref(),
+            name_seed(&name)
+        ],
+        bump=list_bump)]
     pub list: Account<'info, TodoList>,
     pub user: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -208,7 +215,7 @@ impl TodoList {
         8 + 32 + 1 + 2 +
             // name string
             4 + name.len() +
-            // vec of itemspubkeys
+            // vec of item pubkeys
             4 + (capacity as usize) * std::mem::size_of::<Pubkey>()
     }
 }
