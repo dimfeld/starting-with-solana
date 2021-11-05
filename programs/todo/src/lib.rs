@@ -3,36 +3,26 @@ use anchor_lang::AccountsClose;
 
 declare_id!("DbwyCYv83xm4TvTNtUFp8LwtKFtwaKK4P1HcDjAktoLb");
 
-const NAME_SIZE: usize = 60;
-const LIST_CAPACITY: usize = 32;
-
 #[program]
 pub mod todo {
     use anchor_lang::solana_program::{program::invoke, system_instruction::transfer};
 
     use super::*;
-    pub fn new_list(ctx: Context<NewList>, name: String) -> ProgramResult {
+    pub fn new_list(ctx: Context<NewList>, name: String, capacity: u16) -> ProgramResult {
         // Create a new account
         let list = &mut ctx.accounts.list;
-        if name.len() > 60 {
-            return Err(TodoListError::NameTooLong.into());
-        }
-
         list.list_owner = *ctx.accounts.user.to_account_info().key;
         list.name = name;
+        list.capacity = capacity;
         Ok(())
     }
 
     pub fn add(ctx: Context<Add>, name: String, bounty: u64) -> ProgramResult {
-        if name.len() > NAME_SIZE {
-            return Err(TodoListError::NameTooLong.into());
-        }
-
         let user = &ctx.accounts.user;
         let list = &mut ctx.accounts.list;
         let item = &mut ctx.accounts.item;
 
-        if list.lines.len() >= LIST_CAPACITY {
+        if list.lines.len() >= list.capacity as usize {
             return Err(TodoListError::ListFull.into());
         }
 
@@ -75,10 +65,6 @@ pub mod todo {
 
         if &list.list_owner != user && &item.creator != user {
             return Err(TodoListError::CancelPermissions.into());
-        }
-
-        if &item.creator != item_creator.to_account_info().key {
-            return Err(TodoListError::WrongItemCreator.into());
         }
 
         if !list.lines.contains(item.to_account_info().key) {
@@ -125,8 +111,6 @@ pub mod todo {
 pub enum TodoListError {
     #[msg("This list is full")]
     ListFull,
-    #[msg("Name must be 60 bytes or less")]
-    NameTooLong,
     #[msg("Bounty must be enough to mark account rent-exempt")]
     BountyTooSmall,
     #[msg("Only the list owner or item creator may cancel an item")]
@@ -142,19 +126,22 @@ pub enum TodoListError {
 }
 
 #[derive(Accounts)]
+#[instruction(name: String, capacity: u16)]
 pub struct NewList<'info> {
-    // 8 bytes for discriminator, Up to 60 bytes of string data, up to 32 item pubkeys
-    #[account(init, payer=user, space=8 + 4 + NAME_SIZE + 4 + 32 * LIST_CAPACITY)]
+    // 8 bytes discriminator, 4 + name.len for name, 32 * capacity for pubkeys
+    #[account(init, payer=user, space=TodoList::space(&name, capacity))]
     pub list: Account<'info, TodoList>,
     pub user: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
+#[instruction(name: String, bounty: u64)]
 pub struct Add<'info> {
     #[account(mut)]
     pub list: Account<'info, TodoList>,
-    #[account(init, payer=user, space=8 + 1 + 1 + 4 + NAME_SIZE)]
+    // 8 byte discriminator,
+    #[account(init, payer=user, space=ListItem::space(&name))]
     pub item: Account<'info, ListItem>,
     pub user: Signer<'info>,
     pub system_program: Program<'info, System>,
@@ -166,7 +153,7 @@ pub struct Cancel<'info> {
     pub list: Account<'info, TodoList>,
     #[account(mut)]
     pub item: Account<'info, ListItem>,
-    #[account(mut)]
+    #[account(mut, address=item.creator @ TodoListError::WrongItemCreator)]
     pub item_creator: UncheckedAccount<'info>,
     pub user: Signer<'info>,
 }
@@ -185,8 +172,20 @@ pub struct Finish<'info> {
 #[account]
 pub struct TodoList {
     pub list_owner: Pubkey,
+    pub capacity: u16,
     pub name: String,
     pub lines: Vec<Pubkey>,
+}
+
+impl TodoList {
+    fn space(name: &str, capacity: u16) -> usize {
+        // discriminator + owner pubkey + capacity
+        8 + 32 + 2 +
+            // name string
+            4 + name.len() +
+            // vec of itemspubkeys
+            4 + (capacity as usize) * std::mem::size_of::<Pubkey>()
+    }
 }
 
 #[account]
@@ -195,4 +194,11 @@ pub struct ListItem {
     pub creator_finished: bool,
     pub list_owner_finished: bool,
     pub name: String,
+}
+
+impl ListItem {
+    fn space(name: &str) -> usize {
+        // discriminator + creator pubkey + 2 bools + name string
+        8 + 32 + 1 + 1 + 4 + name.len()
+    }
 }

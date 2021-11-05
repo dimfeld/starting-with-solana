@@ -1,8 +1,5 @@
-const assert = require('assert');
 const anchor = require('@project-serum/anchor');
 const BN = require('bn.js');
-const fs = require('fs');
-const path = require('path');
 const expect = require('chai').expect;
 const { SystemProgram, LAMPORTS_PER_SOL } = anchor.web3;
 
@@ -49,10 +46,10 @@ describe('todo', () => {
     return new anchor.Program(mainProgram.idl, mainProgram.programId, user.provider);
   }
 
-  async function createList(owner, name) {
+  async function createList(owner, name, capacity=16) {
     const listAccount = anchor.web3.Keypair.generate();
     let program = programForUser(owner);
-    await program.rpc.newList(name, {
+    await program.rpc.newList(name, capacity, {
       accounts: {
         list: listAccount.publicKey,
         user: owner.key.publicKey,
@@ -153,16 +150,6 @@ describe('todo', () => {
       expect(list.data.name, 'List name is set').equals('A list');
       expect(list.data.lines.length, 'List has no items').equals(0);
     });
-
-    it('fails if the name is too long', async () => {
-      const owner = await createUser();
-      try {
-        await createList(owner, 'joisefjiosefniosefniosnefio;vnsiefdnis;efniosefmklsfknsjkndjrl');
-        assert.fail("Name too long should have failed");
-      } catch(e) {
-        assert.equal(e.toString(), 'Name must be 60 bytes or less');
-      }
-    });
   });
 
   describe('add', () => {
@@ -187,31 +174,10 @@ describe('todo', () => {
       expect(again.list.data.lines, 'Item is added').deep.equals([result.item.publicKey, again.item.publicKey]);
     });
 
-    it('fails if the name is too long', async() => {
-      const owner = await createUser();
-      const list = await createList(owner, 'list');
-      const adderStartingBalance = await getAccountBalance(owner.key.publicKey);
-
-      try {
-        await addItem({
-          list,
-          user: owner,
-          name: 'joisefjiosefniosefniosnefio;vnsiefdnis;efniosefmklsfknsjkndjrl',
-          bounty: 1 * LAMPORTS_PER_SOL
-        });
-        assert.fail('Should have failed');
-      } catch(e) {
-        assert.equal(e.toString(), 'Name must be 60 bytes or less');
-      }
-
-      let adderNewBalance = await getAccountBalance(owner.key.publicKey);
-      expect(adderStartingBalance, 'Adder balance is unchanged').equals(adderNewBalance);
-    });
-
     it('fails if the list is full', async () => {
+      const MAX_LIST_SIZE = 4;
       const owner = await createUser();
-      const list = await createList(owner, 'list');
-      const MAX_LIST_SIZE = 32;
+      const list = await createList(owner, 'list', MAX_LIST_SIZE);
 
       await Promise.all(new Array(MAX_LIST_SIZE).fill(0).map((_, i) => {
         return addItem({
@@ -234,9 +200,9 @@ describe('todo', () => {
         });
 
         console.dir(addResult, { depth: null });
-        assert.fail('Adding to full list should have failed');
+        expect.fail('Adding to full list should have failed');
       } catch(e) {
-        assert.equal(e.toString(), 'This list is full');
+        expect(e.toString()).contains('This list is full');
       }
 
       let adderNewBalance = await getAccountBalance(owner.key.publicKey);
@@ -255,9 +221,9 @@ describe('todo', () => {
           name: 'Small bounty item',
           bounty: 10,
         });
-        assert.fail('Should have failed');
+        expect.fail('Should have failed');
       } catch(e) {
-        assert.equal(e.toString(), 'Bounty must be enough to mark account rent-exempt');
+        expect(e.toString()).equals('Bounty must be enough to mark account rent-exempt');
       }
 
       let adderNewBalance = await getAccountBalance(owner.key.publicKey);
