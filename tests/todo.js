@@ -47,27 +47,32 @@ describe('todo', () => {
   }
 
   async function createList(owner, name, capacity=16) {
-    const listAccount = anchor.web3.Keypair.generate();
+    const [listAccount, bump] = await anchor.web3.PublicKey.findProgramAddress([
+      "todolist",
+      owner.key.publicKey.toBytes(),
+      name.slice(0, 32)
+    ], mainProgram.programId);
+
     let program = programForUser(owner);
-    await program.rpc.newList(name, capacity, {
+    await program.rpc.newList(name, capacity, bump, {
       accounts: {
-        list: listAccount.publicKey,
+        list: listAccount,
         user: owner.key.publicKey,
         systemProgram: SystemProgram.programId,
       },
-      signers: [listAccount]
     });
 
-    let list = await program.account.todoList.fetch(listAccount.publicKey);
-    return { publicKey: listAccount.publicKey, data: list };
+    let list = await program.account.todoList.fetch(listAccount);
+    return { publicKey: listAccount, data: list };
   }
 
   async function addItem({list, user, name, bounty}) {
     const itemAccount = anchor.web3.Keypair.generate();
     let program = programForUser(user);
-    await program.rpc.add(name, new BN(bounty), {
+    await program.rpc.add(list.data.name, name, new BN(bounty), {
       accounts: {
         list: list.publicKey,
+        listOwner: list.data.listOwner,
         item: itemAccount.publicKey,
         user: user.key.publicKey,
         systemProgram: SystemProgram.programId,
@@ -95,9 +100,10 @@ describe('todo', () => {
 
   async function cancelItem({ list, item, itemCreator, user }) {
     let program = programForUser(user);
-    await program.rpc.cancel({
+    await program.rpc.cancel(list.data.name, {
       accounts: {
         list: list.publicKey,
+        listOwner: list.data.listOwner,
         item: item.publicKey,
         itemCreator: itemCreator.key.publicKey,
         user: user.key.publicKey,
@@ -115,9 +121,10 @@ describe('todo', () => {
 
   async function finishItem({ list, listOwner, item, user, expectAccountClosed }) {
     let program = programForUser(user);
-    await program.rpc.finish({
+    await program.rpc.finish(list.data.name, {
       accounts: {
         list: list.publicKey,
+        listOwner: list.data.listOwner,
         item: item.publicKey,
         user: user.key.publicKey,
         listOwner: listOwner.key.publicKey,
@@ -552,7 +559,7 @@ describe('todo', () => {
 
         expect.fail('Finish by other user should have failed');
       } catch(e) {
-        expect(e.toString(), 'error message').equals('Specified list owner does not match the pubkey in the list');
+        expect(e.toString(), 'error message').equals('A seeds constraint was violated');
       }
 
       expect(await getAccountBalance(item.publicKey), 'Item balance did not change').equal(bounty);

@@ -8,16 +8,27 @@ pub mod todo {
     use anchor_lang::solana_program::{program::invoke, system_instruction::transfer};
 
     use super::*;
-    pub fn new_list(ctx: Context<NewList>, name: String, capacity: u16) -> ProgramResult {
+    pub fn new_list(
+        ctx: Context<NewList>,
+        name: String,
+        capacity: u16,
+        account_bump: u8,
+    ) -> ProgramResult {
         // Create a new account
         let list = &mut ctx.accounts.list;
         list.list_owner = *ctx.accounts.user.to_account_info().key;
+        list.bump = account_bump;
         list.name = name;
         list.capacity = capacity;
         Ok(())
     }
 
-    pub fn add(ctx: Context<Add>, name: String, bounty: u64) -> ProgramResult {
+    pub fn add(
+        ctx: Context<Add>,
+        _list_name: String,
+        item_name: String,
+        bounty: u64,
+    ) -> ProgramResult {
         let user = &ctx.accounts.user;
         let list = &mut ctx.accounts.list;
         let item = &mut ctx.accounts.item;
@@ -27,7 +38,7 @@ pub mod todo {
         }
 
         list.lines.push(*item.to_account_info().key);
-        item.name = name;
+        item.name = item_name;
         item.creator = *user.to_account_info().key;
 
         // Move the bounty to the account. We account for the rent amount that the account init
@@ -56,7 +67,7 @@ pub mod todo {
         Ok(())
     }
 
-    pub fn cancel(ctx: Context<Cancel>) -> ProgramResult {
+    pub fn cancel(ctx: Context<Cancel>, _list_name: String) -> ProgramResult {
         let list = &mut ctx.accounts.list;
         let item = &mut ctx.accounts.item;
         let item_creator = &ctx.accounts.item_creator;
@@ -80,7 +91,7 @@ pub mod todo {
         Ok(())
     }
 
-    pub fn finish(ctx: Context<Finish>) -> ProgramResult {
+    pub fn finish(ctx: Context<Finish>, _list_name: String) -> ProgramResult {
         let item = &mut ctx.accounts.item;
         let list = &mut ctx.accounts.list;
         let user = ctx.accounts.user.to_account_info().key;
@@ -125,32 +136,44 @@ pub enum TodoListError {
     WrongItemCreator,
 }
 
+fn name_seed(name: &str) -> &[u8] {
+    let b = name.as_bytes();
+    if b.len() > 32 {
+        &b[0..32]
+    } else {
+        b
+    }
+}
+
 #[derive(Accounts)]
-#[instruction(name: String, capacity: u16)]
+#[instruction(name: String, capacity: u16, list_bump: u8)]
 pub struct NewList<'info> {
     // 8 bytes discriminator, 4 + name.len for name, 32 * capacity for pubkeys
-    #[account(init, payer=user, space=TodoList::space(&name, capacity))]
+    #[account(init, payer=user, space=TodoList::space(&name, capacity), seeds=[b"todolist", user.to_account_info().key.as_ref(), name_seed(&name)], bump=list_bump)]
     pub list: Account<'info, TodoList>,
     pub user: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
-#[instruction(name: String, bounty: u64)]
+#[instruction(list_name: String, item_name: String, bounty: u64)]
 pub struct Add<'info> {
-    #[account(mut)]
+    #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner, seeds=[b"todolist", list_owner.to_account_info().key.as_ref(), name_seed(&list_name)], bump=list.bump)]
     pub list: Account<'info, TodoList>,
+    pub list_owner: UncheckedAccount<'info>,
     // 8 byte discriminator,
-    #[account(init, payer=user, space=ListItem::space(&name))]
+    #[account(init, payer=user, space=ListItem::space(&item_name))]
     pub item: Account<'info, ListItem>,
     pub user: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
+#[instruction(list_name: String)]
 pub struct Cancel<'info> {
-    #[account(mut)]
+    #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner, seeds=[b"todolist", list_owner.to_account_info().key.as_ref(), name_seed(&list_name)], bump=list.bump)]
     pub list: Account<'info, TodoList>,
+    pub list_owner: UncheckedAccount<'info>,
     #[account(mut)]
     pub item: Account<'info, ListItem>,
     #[account(mut, address=item.creator @ TodoListError::WrongItemCreator)]
@@ -159,19 +182,21 @@ pub struct Cancel<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(list_name: String)]
 pub struct Finish<'info> {
-    #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner)]
+    #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner, seeds=[b"todolist", list_owner.to_account_info().key.as_ref(), name_seed(&list_name)], bump=list.bump)]
     pub list: Account<'info, TodoList>,
     #[account(mut)]
-    pub item: Account<'info, ListItem>,
-    #[account(mut)]
     pub list_owner: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub item: Account<'info, ListItem>,
     pub user: Signer<'info>,
 }
 
 #[account]
 pub struct TodoList {
     pub list_owner: Pubkey,
+    pub bump: u8,
     pub capacity: u16,
     pub name: String,
     pub lines: Vec<Pubkey>,
@@ -179,8 +204,8 @@ pub struct TodoList {
 
 impl TodoList {
     fn space(name: &str, capacity: u16) -> usize {
-        // discriminator + owner pubkey + capacity
-        8 + 32 + 2 +
+        // discriminator + owner pubkey + bump + capacity
+        8 + 32 + 1 + 2 +
             // name string
             4 + name.len() +
             // vec of itemspubkeys
