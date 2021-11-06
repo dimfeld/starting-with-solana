@@ -13,7 +13,7 @@ describe('todo', () => {
   }
 
   async function createUser(airdropBalance) {
-    airdropBalance = airdropBalance ?? 5000 * LAMPORTS_PER_SOL;
+    airdropBalance = airdropBalance ?? 10 * LAMPORTS_PER_SOL;
     let user = anchor.web3.Keypair.generate();
     let sig = await provider.connection.requestAirdrop(user.publicKey, airdropBalance);
     await provider.connection.confirmTransaction(sig);
@@ -83,8 +83,10 @@ describe('todo', () => {
       ]
     });
 
-    let listData = await program.account.todoList.fetch(list.publicKey);
-    let itemData = await program.account.listItem.fetch(itemAccount.publicKey);
+    let [listData, itemData] = await Promise.all([
+      program.account.todoList.fetch(list.publicKey),
+      program.account.listItem.fetch(itemAccount.publicKey),
+    ]);
 
     return {
       list: {

@@ -41,14 +41,13 @@ pub mod todo {
         item.name = item_name;
         item.creator = *user.to_account_info().key;
 
-        // Move the bounty to the account. We account for the rent amount that the account init
+        // Move the bounty to the account. We account for the rent amount that Anchor's init
         // already transferred into the account.
         let account_lamports = **item.to_account_info().lamports.borrow();
-        if bounty < account_lamports {
-            return Err(TodoListError::BountyTooSmall.into());
-        }
+        let transfer_amount = bounty
+            .checked_sub(account_lamports)
+            .ok_or(TodoListError::BountyTooSmall)?;
 
-        let transfer_amount = bounty - account_lamports;
         if transfer_amount > 0 {
             invoke(
                 &transfer(
@@ -100,12 +99,19 @@ pub mod todo {
             return Err(TodoListError::ItemNotFound.into());
         }
 
-        if &item.creator == user {
-            item.creator_finished = true;
-        } else if &list.list_owner == user {
-            item.list_owner_finished = true;
-        } else {
+        let is_item_creator = &item.creator == user;
+        let is_list_owner = &list.list_owner == user;
+
+        if !is_item_creator && !is_list_owner {
             return Err(TodoListError::FinishPermissions.into());
+        }
+
+        if is_item_creator {
+            item.creator_finished = true;
+        }
+
+        if is_list_owner {
+            item.list_owner_finished = true;
         }
 
         if item.creator_finished && item.list_owner_finished {
