@@ -173,7 +173,7 @@ pub struct NewList<'info> {
 pub struct Add<'info> {
     #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner, seeds=[b"todolist", list_owner.to_account_info().key.as_ref(), name_seed(&list_name)], bump=list.bump)]
     pub list: Account<'info, TodoList>,
-    pub list_owner: UncheckedAccount<'info>,
+    pub list_owner: AccountInfo<'info>,
     // 8 byte discriminator,
     #[account(init, payer=user, space=ListItem::space(&item_name))]
     pub item: Account<'info, ListItem>,
@@ -186,11 +186,11 @@ pub struct Add<'info> {
 pub struct Cancel<'info> {
     #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner, seeds=[b"todolist", list_owner.to_account_info().key.as_ref(), name_seed(&list_name)], bump=list.bump)]
     pub list: Account<'info, TodoList>,
-    pub list_owner: UncheckedAccount<'info>,
+    pub list_owner: AccountInfo<'info>,
     #[account(mut)]
     pub item: Account<'info, ListItem>,
     #[account(mut, address=item.creator @ TodoListError::WrongItemCreator)]
-    pub item_creator: UncheckedAccount<'info>,
+    pub item_creator: AccountInfo<'info>,
     pub user: Signer<'info>,
 }
 
@@ -200,7 +200,7 @@ pub struct Finish<'info> {
     #[account(mut, has_one=list_owner @ TodoListError::WrongListOwner, seeds=[b"todolist", list_owner.to_account_info().key.as_ref(), name_seed(&list_name)], bump=list.bump)]
     pub list: Account<'info, TodoList>,
     #[account(mut)]
-    pub list_owner: UncheckedAccount<'info>,
+    pub list_owner: AccountInfo<'info>,
     #[account(mut)]
     pub item: Account<'info, ListItem>,
     pub user: Signer<'info>,
