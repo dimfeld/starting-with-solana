@@ -126,10 +126,9 @@ describe('todo', () => {
     await program.rpc.finish(list.data.name, {
       accounts: {
         list: list.publicKey,
-        listOwner: list.data.listOwner,
+        listOwner: listOwner.key.publicKey,
         item: item.publicKey,
         user: user.key.publicKey,
-        listOwner: listOwner.key.publicKey,
       }
     });
 
